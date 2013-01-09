@@ -37,16 +37,17 @@ struct Name{
  * CONNECTIONS => should this be a table in the system, rather than per actor.
  *      This would make it smaller, but makes migration a little more difficult.
  */
-struct Channel<T>{
+struct Channel{
     mut name:Name,
     mut msg_type:Msg_Type,
-    mut connections: ~[@Channel<T>],
-	mut buffer:~[@T],
+    mut connections: ~[@Channel],
+	mut buff_size:uint,
+	//mut buffer:~[@T],
 	
 }
-/*-----------------------------------------------------------------------------*/
-trait Chan_t{
-	fn create() -> Channel;
+//-----------------------------------------------------------------------------
+trait CHAN{
+	fn create(n:~str, msg_type:Msg_Type, buff_size:uint) -> Channel;
 	fn connect() -> bool;
 	fn disconnect() -> bool;
 	fn send();
@@ -54,30 +55,52 @@ trait Chan_t{
 	fn select();
 }
 
-impl Channel : Chan_t {
-	fn create() -> Channel{
-		
+impl Channel: CHAN {
+	fn create(n:~str, mt:Msg_Type, bfs:uint) -> Channel{
+		let mut nme = Name{location:~"location", actor:~"actor", chan_name:n};
+		Channel{name:nme, msg_type:mt, connections:~[], buff_size:bfs}//, buffer:~[]}
+	}
+
+	fn connect() -> bool{
+		true
+	}
+	fn disconnect() -> bool{
+		true
+	}
+	fn send(){
+	}
+	fn recv(){
+	}
+	fn select(){
 	}
 }
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
+
+//-----------------------------------------------------------------------------
+
+fn main(){
+
+	let mut a = CHAN::create(~"a", integer, 32);
+}
+/*
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 fn create_channel(n:~str, mt:Msg_Type) -> Channel<Msg_Type>{
 
 	let mut nme = Name{location:~"location", actor:~"actor", chan_name:n};
 	Channel{name:nme, msg_type:mt, connections:~[]}
 }
-/*-----------------------------------------------------------------------------*/
+//-----------------------------------------------------------------------------
 fn channel_eq(a: @Channel<Msg_Type>, b: @Channel<Msg_Type>) -> bool{
-	/*
-	let i = a.name.location + ~":" + a.name.actor + ~":" + a.name.chan_name;
-	let j = b.name.location + ~":" + b.name.actor + ~":" + b.name.chan_name;
-	io::print(fmt!("channel_eq: %s || %s\n", i,j));
-	*/
+	
+	//let i = a.name.location + ~":" + a.name.actor + ~":" + a.name.chan_name;
+	//let j = b.name.location + ~":" + b.name.actor + ~":" + b.name.chan_name;
+	//io::print(fmt!("channel_eq: %s || %s\n", i,j));
+	
 	a.name.location == b.name.location && a.name.actor == b.name.actor && a.name.chan_name == b.name.chan_name 
 }
-/*-----------------------------------------------------------------------------*/
+//-----------------------------------------------------------------------------
 fn channel_connect(a: @Channel, b: @Channel) ->bool {
 	//if not already connected
 	io::print(fmt!("channel_connect: '%s', has %u connections\n", debug_name(a.name), a.connections.len()));
@@ -97,7 +120,7 @@ fn channel_connect(a: @Channel, b: @Channel) ->bool {
 	io::print(~"channel_connect: successfully added\n");
 	true
 }
-/*-----------------------------------------------------------------------------*/
+//----------------------------------------------------------------------------
 fn channel_disconnect(a: @Channel, b: @Channel) -> bool{
 	
 	if a.connections.is_empty() {
@@ -129,7 +152,7 @@ fn channel_disconnect(a: @Channel, b: @Channel) -> bool{
 	io::print(~"channel_disconnect: error\n");
 	false
 }
-/*-----------------------------------------------------------------------------*/
+//-----------------------------------------------------------------------------
 fn channel_recv(c: @Channel, sync: bool) -> bool{
 
 	if c.connections.is_empty() {
@@ -137,23 +160,19 @@ fn channel_recv(c: @Channel, sync: bool) -> bool{
 		return false;
 	}
 
-	/*
-	 * Check list
-	 * 
-	 * Do i have connections
-	 */
+
 
 	true
 }
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------*/
-/******************************************************************************/
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//****************************************************************************
 //DEBUG
-/******************************************************************************/
+//****************************************************************************
 fn get_type(t:Msg_Type) -> ~str {
     match t {
         //the possible types
@@ -161,7 +180,7 @@ fn get_type(t:Msg_Type) -> ~str {
 	string  => ~"string", 
     }
 }
-/*-----------------------------------------------------------------------------*/
+//-----------------------------------------------------------------------------
 fn debug_channel(c: @Channel){
 	io::println("**************************************");
 
@@ -176,22 +195,28 @@ fn debug_channel(c: @Channel){
 	}
 	io::println("**************************************");         
 }
-/*-----------------------------------------------------------------------------*/
+//-----------------------------------------------------------------------------
 fn debug_name(n:Name) -> ~str{
 	//io::print(fmt!("%s:%s:%s\n", n.location, n.actor, n.chan_name));
 	n.location + ~":" + n.actor + ~":" + n.chan_name
 }
-/*-----------------------------------------------------------------------------*/
-/******************************************************************************/
+//-----------------------------------------------------------------------------
+//****************************************************************************
 //Main
-/******************************************************************************/
+//****************************************************************************
+
 fn main(){
 //	let c1:Channel, c2:Channel;
 
 //	let mut a = Channel{name:~"a", msg_type:integer, connections:@[]};
 //	let mut b = Channel{name:~"b", msg_type:integer}
 	io::println("Started\n");
-	
+
+	let mut a = CHAN<int>::create(~"a", integer, 32);
+
+
+
+/*	
 	let mut a = @create_channel(~"a", integer);
 	let mut b = @create_channel(~"b", integer);
 
@@ -212,3 +237,4 @@ fn main(){
 	
 
 }
+*/

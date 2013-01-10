@@ -11,13 +11,17 @@ rules_macro! chan_eq(
 )
 */
 
-
-//This should be replaced by generics
-enum Msg_Type{
-    integer,
-    string,
+//This is what will go accross channels
+struct Message<T> {
+	src		:Channel,
+	dest	:Channel,
+	payload	:T
 }
 
+enum direction{
+	in, 
+	out,
+}
 
 /*
  * Structure of a name
@@ -37,62 +41,78 @@ struct Name{
  * CONNECTIONS => should this be a table in the system, rather than per actor.
  *      This would make it smaller, but makes migration a little more difficult.
  */
-struct Channel{
-    mut name:Name,
-    mut msg_type:Msg_Type,
-    mut connections: ~[@Channel],
-	mut buff_size:uint,
-	//mut buffer:~[@T],
-	
+struct Channel<T>{
+    mut name		:Name,
+	mut msg_type	:T,
+    mut connections	:~[@Channel<T>],
+	mut buffer		:~[Message],
+	mut buff_limit	:uint,
+		dir			:direction,	
 }
 //-----------------------------------------------------------------------------
-trait CHAN{
-	fn create(n:~str, msg_type:Msg_Type, buff_size:uint) -> Channel;
-	fn connect() -> bool;
-	fn disconnect() -> bool;
-	fn send();
-	fn recv();
-	fn select();
-}
+fn same_direction(a: direction, b: direction) -> bool{
+	match a{
+		in => {
+			match b {
+				in  => {return true;}
+				out => {return false;}
+			}
+		}
+		out => {
+			match b {
+				in  => {return false;}
+				out => {return true;}
+			}
 
-impl Channel: CHAN {
-	fn create(n:~str, mt:Msg_Type, bfs:uint) -> Channel{
-		let mut nme = Name{location:~"location", actor:~"actor", chan_name:n};
-		Channel{name:nme, msg_type:mt, connections:~[], buff_size:bfs}//, buffer:~[]}
-	}
-
-	fn connect() -> bool{
-		true
-	}
-	fn disconnect() -> bool{
-		true
-	}
-	fn send(){
-	}
-	fn recv(){
-	}
-	fn select(){
+		} 
 	}
 }
-
-//-----------------------------------------------------------------------------
-
-fn main(){
-
-	let mut a = CHAN::create(~"a", integer, 32);
+//****************************************************************************
+//DEBUG
+//****************************************************************************
+fn get_type(t:Msg_Type) -> ~str {
+    match t {
+        //the possible types
+	integer => ~"integer",
+	string  => ~"string", 
+    }
 }
-/*
+//-----------------------------------------------------------------------------
+fn debug_channel<T>(c: @Channel<T>){
+	io::println("**************************************");
+
+    io::println(fmt!("%s", debug_name(c.name)));
+    //io::println(get_type(c.msg_type));
+       
+	io::println(fmt!("connections: %u", c.connections.len()));
+	let mut count = 0;
+	while(count < c.connections.len()){
+		io::println(fmt!("- %s", debug_name(c.connections[count].name)));
+		count  = count + 1;
+	}
+	io::println("**************************************");         
+}
+//-----------------------------------------------------------------------------
+fn debug_name(n:Name) -> ~str{
+	//io::print(fmt!("%s:%s:%s\n", n.location, n.actor, n.chan_name));
+	n.location + ~":" + n.actor + ~":" + n.chan_name
+}
+//****************************************************************************
+//Operations
+//****************************************************************************
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-fn create_channel(n:~str, mt:Msg_Type) -> Channel<Msg_Type>{
+//-----------------------------------------------------------------------------
+fn create_channel<T>(n:~str, mt:T, d:direction, limit:uint) -> Channel<T>{
 
 	let mut nme = Name{location:~"location", actor:~"actor", chan_name:n};
-	Channel{name:nme, msg_type:mt, connections:~[]}
+	Channel{name:nme, msg_type:mt, connections:~[], buffer:~[], buff_limit:limit, dir:d}
 }
+
 //-----------------------------------------------------------------------------
-fn channel_eq(a: @Channel<Msg_Type>, b: @Channel<Msg_Type>) -> bool{
+fn channel_eq<T>(a: @Channel<T>, b: @Channel<T>) -> bool{
 	
 	//let i = a.name.location + ~":" + a.name.actor + ~":" + a.name.chan_name;
 	//let j = b.name.location + ~":" + b.name.actor + ~":" + b.name.chan_name;
@@ -101,7 +121,13 @@ fn channel_eq(a: @Channel<Msg_Type>, b: @Channel<Msg_Type>) -> bool{
 	a.name.location == b.name.location && a.name.actor == b.name.actor && a.name.chan_name == b.name.chan_name 
 }
 //-----------------------------------------------------------------------------
-fn channel_connect(a: @Channel, b: @Channel) ->bool {
+fn channel_connect<T>(a: @Channel<T>, b: @Channel<T>) ->bool {
+
+	if same_direction(a.dir, b.dir) {
+		io::print(~"channel_connect: mismatching channel polarity\n");				
+		return false;
+	}
+
 	//if not already connected
 	io::print(fmt!("channel_connect: '%s', has %u connections\n", debug_name(a.name), a.connections.len()));
 	
@@ -117,11 +143,13 @@ fn channel_connect(a: @Channel, b: @Channel) ->bool {
 	vec::push(&mut a.connections, b);
 	vec::push(&mut b.connections, a);
 
-	io::print(~"channel_connect: successfully added\n");
+	io::print(~"channel_connect: successfully added, do we need to move messages?\n");
+
+
 	true
 }
 //----------------------------------------------------------------------------
-fn channel_disconnect(a: @Channel, b: @Channel) -> bool{
+fn channel_disconnect<T>(a: @Channel<T>, b: @Channel<T>) -> bool{
 	
 	if a.connections.is_empty() {
 		io::print(fmt!("channel_disconnect: '%s', has no connections\n", debug_name(a.name)));
@@ -153,72 +181,88 @@ fn channel_disconnect(a: @Channel, b: @Channel) -> bool{
 	false
 }
 //-----------------------------------------------------------------------------
-fn channel_recv(c: @Channel, sync: bool) -> bool{
+fn channel_recv<T>(c: @Channel<T>, sync: bool) -> bool{
 
 	if c.connections.is_empty() {
 		io::print(fmt!("channel_recv: '%s', has no connections\n", debug_name(c.name)));
-		return false;
+	}		
+
+	if c.buffer.len() == 0 {
+		io::print(fmt!("channel_recv: no msgs\n"));		
+		
+		if sync {
+			io::print(fmt!("channel_recv: sync mode (wait for a message)\n"));
+		}
+		else {
+			io::print(fmt!("channel_recv: NOT sync mode (return)\n"));
+		}
 	}
+	else {
+		io::print(fmt!("channel_recv: we have messages\n"));		
+		//lift from buffer and return
+	}
+	
 
 
 
 	true
 }
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//****************************************************************************
-//DEBUG
-//****************************************************************************
-fn get_type(t:Msg_Type) -> ~str {
-    match t {
-        //the possible types
-	integer => ~"integer",
-	string  => ~"string", 
-    }
-}
-//-----------------------------------------------------------------------------
-fn debug_channel(c: @Channel){
-	io::println("**************************************");
+fn channel_send<T>(c: @Channel<T>, sync: bool, msg: ~T){
+	io::print(fmt!("channel_send: '%s'\n", debug_name(c.name)));
+	
+	if c.connections.is_empty() {
+		io::print(fmt!("channel_send: '%s', has no connections\n", debug_name(c.name)));
 
-    io::println(fmt!("%s", debug_name(c.name)));
-    io::println(get_type(c.msg_type));
-       
-	io::println(fmt!("connections: %u", c.connections.len()));
-	let mut count = 0;
-	while(count < c.connections.len()){
-		io::println(fmt!("- %s", debug_name(c.connections[count].name)));
-		count  = count + 1;
+		if sync {
+			io::print(fmt!("channel_send: sync, wait for a connection\n"));                         
+		}
+		else {
+			io::print(fmt!("channel_send: not sync\n"));
+			if c.buffer.len() < c.buff_limit {
+				io::print(fmt!("channel_send: store message in the buffer\n"));
+				vec::push(&mut c.buffer, msg);
+			}
+			else {	
+				io::print(fmt!("channel_send: no buffer space, what do we do? Error?\n"));
+			}
+		}
 	}
-	io::println("**************************************");         
+	else {
+		if sync {
+			io::print(fmt!("channel_send: sync, try and push\n"));                         
+			let choice = c.connections[rand::random() % c.connections.len()];
+
+			debug_channel(choice);
+
+			if /*choice has buffer_space (and by extension is reacheable)*/{
+				io::print(fmt!("channel_send: pushed\n"));
+				vec::push(&mut choice.buffer, msg);
+				//wake them up
+			}
+			else {
+				//put in our *output* buffer and wait till they pull
+				
+			}
+		}
+	}
 }
 //-----------------------------------------------------------------------------
-fn debug_name(n:Name) -> ~str{
-	//io::print(fmt!("%s:%s:%s\n", n.location, n.actor, n.chan_name));
-	n.location + ~":" + n.actor + ~":" + n.chan_name
-}
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //****************************************************************************
 //Main
 //****************************************************************************
 
 fn main(){
-//	let c1:Channel, c2:Channel;
-
-//	let mut a = Channel{name:~"a", msg_type:integer, connections:@[]};
-//	let mut b = Channel{name:~"b", msg_type:integer}
 	io::println("Started\n");
 
-	let mut a = CHAN<int>::create(~"a", integer, 32);
+	let int_type = 6;
+	let mut a = @create_channel(~"a", int_type, in, 10);
+	let mut b = @create_channel(~"b", int_type, out, 10);
 
-
-
-/*	
-	let mut a = @create_channel(~"a", integer);
-	let mut b = @create_channel(~"b", integer);
 
 	debug_channel(a);
 	debug_channel(b);
@@ -232,9 +276,14 @@ fn main(){
 	debug_channel(a);
 	debug_channel(b);
 
-	channel_disconnect(a, b);
+	//channel_disconnect(a, b);
+
+	channel_recv(a, true);
+
+	let msg = ~6;
+	channel_send(a, true, msg)
 
 	
 
 }
-*/
+
